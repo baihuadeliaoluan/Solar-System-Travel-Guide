@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>终极太阳系可视化（增强版：更多天体）</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: linear-gradient(to bottom, #0A0C15, #05070E);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: white;
+      cursor: default;
+    }
+    canvas {
+      display: block;
+    }
+    #infoPanel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(10, 15, 30, 0.9);
+      padding: 15px;
+      border-radius: 10px;
+      max-width: 350px;
+      font-size: 14px;
+      line-height: 1.5;
+      backdrop-filter: blur(8px);
+      display: none;
+      z-index: 100;
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+    }
+    #infoPanel h3 {
+      margin: 0 0 10px 0;
+      color: #FFD700;
+      text-shadow: 0 0 3px rgba(0,0,0,0.7);
+    }
+    #infoPanel p {
+      margin: 4px 0;
+    }
+    #scaleNote {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(10, 15, 30, 0.8);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      z-index: 10;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    #title {
+      position: absolute;
+      top: 20px;
+      width: 100%;
+      text-align: center;
+      font-size: 22px;
+      text-shadow: 0 0 12px rgba(255,255,255,0.9);
+      z-index: 10;
+      letter-spacing: 1px;
+    }
+    #instructions {
+      position: absolute;
+      bottom: 80px;
+      left: 20px;
+      background: rgba(10, 15, 30, 0.6);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 10;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    #pauseBtn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(10, 15, 30, 0.8);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      z-index: 10;
+      user-select: none;
+      transition: all 0.2s;
+    }
+    #pauseBtn:hover {
+      background: rgba(30, 40, 70, 0.95);
+      transform: scale(1.03);
+    }
+    #toggleBtns {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+    .toggleBtn {
+      background: rgba(10, 15, 30, 0.8);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .toggleBtn:hover {
+      background: rgba(30, 40, 70, 0.95);
+    }
+    .toggleBtn.active {
+      background: rgba(50, 80, 150, 0.9);
+      border-color: rgba(100, 150, 255, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="title">太阳系旅行指南，🚀明日号航空公司，值得信赖d(´ω｀*)</div>
+  <canvas id="solarSystem"></canvas>
+  <div id="infoPanel"></div>
+  <div id="pauseBtn">⏸️ 暂停</div>
+  <div id="toggleBtns">
+    <button class="toggleBtn active" data-type="dwarfPlanets">柯伊伯带天体</button>
+    <button class="toggleBtn active" data-type="asteroidBelt">小行星带</button>
+    <button class="toggleBtn active" data-type="comets">著名彗星</button>
+    <button class="toggleBtn active" data-type="probes">太空探测器</button>
+    <button class="toggleBtn active" data-type="distantObjects">远方天体</button>
+  </div>
+  <script>
+    const canvas = document.getElementById('solarSystem');
+    const ctx = canvas.getContext('2d');
+    const infoPanel = document.getElementById('infoPanel');
+    const pauseBtn = document.getElementById('pauseBtn');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    // 视图控制
+    let camX = 0;
+    let camY = 0;
+    let zoom = 1;
+    // 输入状态
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let spacePressed = false;
+    let mouseX = 0;
+    let mouseY = 0;
+    // 动画状态
+    let isPaused = false;
+    // 天体显示开关
+    const displayOptions = {
+      dwarfPlanets: true,
+      asteroidBelt: true,
+      comets: true,
+      probes: true,
+      distantObjects: true
+    };
+    // 星空背景
+    const stars = [];
+    function initStars() {
+      // 200颗星星
+      for (let i = 0; i < 200; i++) {
+        stars.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          size: Math.random() * 0.8 + 0.3,
+          brightness: Math.random() * 0.25 + 0.1,
+          twinkleSpeed: Math.random() * 0.05 + 0.01
+        });
+      }
+    }
+    function drawStars() {
+      // 深空渐变背景
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, '#000000');
+      gradient.addColorStop(0.5, '#090c16');
+      gradient.addColorStop(1, '#0f1525');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // 闪烁星星
+      stars.forEach(star => {
+        star.brightness += Math.sin(Date.now() * star.twinkleSpeed) * 0.02;
+        star.brightness = Math.max(0.1, Math.min(0.35, star.brightness));
+        ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness})`;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    // 对数距离映射
+    function auToVisual(au) {
+      const minAU = 0.1;
+      const maxAU = 63000;
+      const clampedAU = Math.max(au, minAU);
+      const logAU = Math.log10(clampedAU);
+      const logMin = Math.log10(minAU);
+      const logMax = Math.log10(maxAU);
+      const ratio = (logAU - logMin) / (logMax - logMin);
+      return ratio * 5000;
+    }
+    function worldToScreen(wx, wy) {
+      return {
+        x: (wx - camX) * zoom + canvas.width / 2,
+        y: (wy - camY) * zoom + canvas.height / 2
+      };
+    }
+    function screenToWorld(sx, sy) {
+      return {
+        x: (sx - canvas.width / 2) / zoom + camX,
+        y: (sy - canvas.height / 2) / zoom + camY
+      };
+    }
+    // 天体数据 - 八大行星 + 冥王星
+    const celestialBodies = [
+      { name: "太阳", type: "star", distanceAU: 0, diameterKm: 1_392_700, rotationHours: 609, orbitDays: 0, radius: 20, color: "#FDB813" },
+      { name: "水星", distanceAU: 0.39, diameterKm: 4879, rotationHours: 1407.6, orbitDays: 88, radius: 3.5, color: "#afdfe4" },
+      { name: "金星", distanceAU: 0.72, diameterKm: 12104, rotationHours: -5832.5, orbitDays: 225, radius: 5.5, color: "#E7CDCD" },
+      { name: "地球", distanceAU: 1, diameterKm: 12756, rotationHours: 24, orbitDays: 365.25, radius: 6, color: "#6B93D6", hasMoon: true },
+      { name: "火星", distanceAU: 1.52, diameterKm: 6792, rotationHours: 24.6, orbitDays: 687, radius: 4.5, color: "#C1440E" },
+      { name: "谷神星", type: "dwarf", group: "asteroidBelt", distanceAU: 2.77, diameterKm: 940, rotationHours: 9.1, orbitDays: 1680, radius: 2.2, color: "#D2B48C", info: "小行星带最大天体，矮行星" },
+      { name: "木星", distanceAU: 5.2, diameterKm: 142984, rotationHours: 9.9, orbitDays: 4333, radius: 15, color: "#D8CA9D" },
+      { name: "土星", distanceAU: 9.5, diameterKm: 120536, rotationHours: 10.7, orbitDays: 10759, radius: 12, color: "#f4a460", hasRings: true },
+      { name: "天王星", distanceAU: 19.2, diameterKm: 51118, rotationHours: -17.2, orbitDays: 30687, radius: 9, color: "#D1E7E7" },
+      { name: "海王星", distanceAU: 30.1, diameterKm: 49528, rotationHours: 16.1, orbitDays: 60190, radius: 9, color: "#5B5DDF" },
+      { name: "冥王星", type: "dwarf", group: "dwarfPlanets", distanceAU: 39.5, diameterKm: 2376, rotationHours: 153.3, orbitDays: 90560, radius: 2.5, color: "#A7A7A7", info: "矮行星，柯伊伯带天体" }
+    ];
+    // 柯伊伯带矮行星
+    const dwarfPlanets = [
+      { name: "阋神星", type: "dwarf", distanceAU: 68, diameterKm: 2326, orbitDays: 204000, radius: 2.3, color: "#E6E6E6", info: "比冥王星质量更大的矮行星" },
+      { name: "鸟神星", type: "dwarf", distanceAU: 45.8, diameterKm: 1430, orbitDays: 112000, radius: 1.8, color: "#F0E68C", info: "柯伊伯带第三大已知矮行星" },
+      { name: "妊神星", type: "dwarf", distanceAU: 43, diameterKm: 1960, orbitDays: 103000, radius: 2, color: "#FFFFE0", info: "橄榄球形状，快速自转的矮行星" },
+      { name: "共工星", type: "dwarf", distanceAU: 67, diameterKm: 1230, orbitDays: 190000, radius: 1.6, color: "#FFB6C1", info: "红色表面，有卫星相柳" }
+    ];
+    // 小行星带天体
+    const asteroidBelt = [
+      { name: "灶神星", type: "asteroid", distanceAU: 2.36, diameterKm: 525, orbitDays: 1325, radius: 1.4, color: "#CD853F", info: "小行星带第二亮天体" },
+      { name: "智神星", type: "asteroid", distanceAU: 2.77, diameterKm: 544, orbitDays: 1686, radius: 1.5, color: "#A0522D", info: "小行星带第二大天体" },
+      { name: "健神星", type: "asteroid", distanceAU: 3.14, diameterKm: 430, orbitDays: 2031, radius: 1.3, color: "#8B4513", info: "小行星带第四大天体" }
+    ];
+    // 著名彗星
+    const comets = [
+      { 
+        name: "哈雷彗星", 
+        type: "comet", 
+        perihelionAU: 0.6, 
+        aphelionAU: 35.1, 
+        avgDistanceAU: 17.8, 
+        orbitDays: 27990, 
+        radius: 1.2, 
+        color: "#87CEFA", 
+        tail: false, // 禁用彗尾
+        info: "最著名的周期彗星，每76年回归一次"
+      },
+      { 
+        name: "海尔-波普彗星", 
+        type: "comet", 
+        perihelionAU: 0.91, 
+        aphelionAU: 370.8, 
+        avgDistanceAU: 185.8, 
+        orbitDays: 1017000, 
+        radius: 1.8, 
+        color: "#4682B4", 
+        tail: false, // 禁用彗尾
+        info: "1997年出现在夜空中的大彗星"
+      },
+      { 
+        name: "丘留莫夫-格拉西缅科", 
+        type: "comet", 
+        perihelionAU: 1.24, 
+        aphelionAU: 5.68, 
+        avgDistanceAU: 3.46, 
+        orbitDays: 2156, 
+        radius: 0.8, 
+        color: "#6A5ACD", 
+        tail: false, // 禁用彗尾
+        info: "罗塞塔号探测器登陆的彗星"
+      }
+    ];
+    // 太空探测器 - 保留您的深蓝色系修改
+    const spaceProbes = [
+      { 
+        name: "旅行者1号", 
+        type: "probe", 
+        distanceAU: 163, 
+        radius: 1.5, 
+        color: "#87ceeb",
+        info: "人类最远的人造物体（1977年发射）",
+        status: "已进入星际空间",
+        angle: Math.random() * Math.PI * 2
+      },
+      { 
+        name: "旅行者2号", 
+        type: "probe", 
+        distanceAU: 135, 
+        radius: 1.5, 
+        color: "#d4b1e0",
+        info: "唯一访问过四大外行星的探测器",
+        status: "已进入星际空间",
+        angle: Math.random() * Math.PI * 2
+      },
+      { 
+        name: "先驱者10号", 
+        type: "probe", 
+        distanceAU: 127, 
+        radius: 1.3, 
+        color: "#7255b2",
+        info: "第一个穿越小行星带的人造物体",
+        status: "信号已丢失",
+        angle: Math.random() * Math.PI * 2
+      },
+      { 
+        name: "新视野号", 
+        type: "probe", 
+        distanceAU: 55, 
+        radius: 1.4, 
+        color: "#977dc6",
+        info: "探访冥王星和柯伊伯带天体的探测器",
+        status: "正在探索柯伊伯带",
+        angle: Math.random() * Math.PI * 2
+      }
+    ];
+    // 远方天体（内奥尔特云）- 添加了四个新天体
+    const distantObjects = [
+      { 
+        name: "赛德娜", 
+        type: "distant", 
+        perihelionAU: 76, 
+        aphelionAU: 937, 
+        avgDistanceAU: 506.5, 
+        diameterKm: 995, 
+        orbitDays: 4_170_000, 
+        radius: 1.5, 
+        color: "#FFA07A", 
+        info: "可能属于内奥尔特云的遥远天体"
+      },
+      { 
+        name: "2012 VP₁₁₃", 
+        type: "distant", 
+        perihelionAU: 80, 
+        aphelionAU: 446, 
+        avgDistanceAU: 263, 
+        diameterKm: 450, 
+        orbitDays: 1_610_000, 
+        radius: 1.2, 
+        color: "#FF7F50", 
+        info: "内奥尔特云候选天体"
+      },
+      { 
+        name: "2015 TG387", 
+        type: "distant", 
+        perihelionAU: 65, 
+        aphelionAU: 2300, 
+        avgDistanceAU: 1182.5, 
+        diameterKm: 300, 
+        orbitDays: 1_500_000, 
+        radius: 1.2, 
+        color: "#FFA500", 
+        info: "轨道远日点接近奥尔特云内缘的极端海王星外天体"
+      },
+      { 
+        name: "2013 SY99", 
+        type: "distant", 
+        perihelionAU: 50, 
+        aphelionAU: 2000, 
+        avgDistanceAU: 1025, 
+        diameterKm: 250, 
+        orbitDays: 1_200_000, 
+        radius: 1.1, 
+        color: "#DAA520", 
+        info: "轨道远日点接近奥尔特云内缘的天体"
+      },
+      { 
+        name: "2018 AG37", 
+        type: "distant", 
+        perihelionAU: 65, 
+        aphelionAU: 1300, 
+        avgDistanceAU: 682.5, 
+        diameterKm: 400, 
+        orbitDays: 800_000, 
+        radius: 1.3, 
+        color: "#9ACD32", 
+        info: "距离太阳最远的已知天体之一"
+      },
+      { 
+        name: "2021 FD10", 
+        type: "distant", 
+        perihelionAU: 80, 
+        aphelionAU: 1500, 
+        avgDistanceAU: 790, 
+        diameterKm: 350, 
+        orbitDays: 900_000, 
+        radius: 1.2, 
+        color: "#6495ED", 
+        info: "新发现的奥尔特云内缘天体"
+      }
+    ];
+    // 月球数据
+    const moon = {
+      name: "月球",
+      parent: "地球",
+      orbitRadiusAU: 0.00257,
+      orbitPeriodDays: 27.3,
+      radius: 1.5,
+      color: "#CCCCCC",
+      visualScale: 12
+    };
+    // 柯伊伯带小天体
+    const kuiperBeltObjects = [];
+    for (let i = 0; i < 300; i++) {
+      const au = 30 + Math.random() * 25;
+      const angle = Math.random() * Math.PI * 2;
+      const visualR = auToVisual(au);
+      kuiperBeltObjects.push({
+        x: Math.cos(angle) * visualR,
+        y: Math.sin(angle) * visualR
+      });
+    }
+    // 奥尔特云
+    const oortCloudAU = 63000;
+    const oortVisualR = auToVisual(oortCloudAU);
+    // 星际区域标注
+    const interstellarRegions = [
+      { name: "日球层顶", distanceAU: 120, color: "#ffb444", label: "太阳风停止处" },
+      { name: "小行星带", distanceAU: 2.8, color: "#B8860B", label: "岩石天体聚集区" },
+      { name: "柯伊伯带", distanceAU: 45, color: "#4682B4", label: "冰质天体带" },
+      { name: "奥尔特云内缘", distanceAU: 2000, color: "#AAAAFF", label: "长周期彗星来源" },
+      { name: "奥尔特云外缘", distanceAU: 63000, color: "#e5b5c7", label: "太阳引力主导边界" }
+    ];
+    // 标签避让系统 - 重大升级
+    const labelSystem = {
+      labels: [],
+      minDistance: 40,
+      repulsion: 0.8,
+      maxIterations: 15,
+      verticalOffset: 30,
+      init() {
+        this.labels = [];
+      },
+      addLabel(x, y, text, group = 'default', type = 'default', verticalAdjust = 0, color = '#FFFFFF') {
+        const width = ctx.measureText(text).width + 15;
+        const height = 16;
+        this.labels.push({
+          x, 
+          y: y + verticalAdjust * this.verticalOffset,
+          text,
+          width, 
+          height,
+          group,
+          type,
+          fixed: false,
+          vx: 0,
+          vy: 0,
+          verticalAdjust,
+          color
+        });
+      },
+      update() {
+        this.labels.forEach(label => {
+          label.vx = 0;
+          label.vy = 0;
+        });
+        for (let i = 0; i < this.labels.length; i++) {
+          for (let j = i + 1; j < this.labels.length; j++) {
+            const label1 = this.labels[i];
+            const label2 = this.labels[j];
+            if (label1.group !== label2.group) continue;
+            const dx = label1.x - label2.x;
+            const dy = label1.y - label2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < this.minDistance) {
+              const force = (this.minDistance - distance) * this.repulsion * 1.5;
+              const angle = Math.atan2(dy, dx);
+              const fx = Math.cos(angle) * force;
+              const fy = Math.sin(angle) * force;
+              label1.vx += fx;
+              label1.vy += fy;
+              label2.vx -= fx;
+              label2.vy -= fy;
+            }
+          }
+        }
+        this.labels.forEach(label => {
+          if (!label.fixed) {
+            label.x += label.vx * 0.8;
+            label.y += label.vy * 0.8;
+          }
+        });
+      },
+      reset() {
+        this.init();
+      },
+      draw() {
+        // 先绘制AU数值标签
+        this.labels
+          .filter(label => label.type === 'au_value')
+          .forEach(label => {
+            ctx.fillStyle = 'rgba(200, 220, 255, 0.9)';
+            ctx.font = '13px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(label.text, label.x, label.y);
+          });
+        // 再绘制区域名称标签
+        this.labels
+          .filter(label => label.type === 'region_name')
+          .forEach(label => {
+            ctx.fillStyle = label.color || 'rgba(255, 255, 255, 0.95)';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(label.text, label.x, label.y);
+          });
+        // 最后绘制天体标签
+        this.labels
+          .filter(label => label.type === 'body_name')
+          .forEach(label => {
+            ctx.fillStyle = label.color;
+            ctx.font = '13px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(label.text, label.x, label.y);
+          });
+      }
+    };
+    // 输入处理
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        spacePressed = true;
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        spacePressed = false;
+      }
+    });
+    canvas.addEventListener('mousedown', (e) => {
+      if (spacePressed && e.button === 0) {
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        canvas.style.cursor = 'grabbing';
+      }
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      if (isDragging) {
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        camX -= dx / zoom;
+        camY -= dy / zoom;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+      }
+    });
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        canvas.style.cursor = spacePressed ? 'grab' : 'default';
+      }
+    });
+    window.addEventListener('mouseleave', () => {
+      isDragging = false;
+      canvas.style.cursor = 'default';
+    });
+    canvas.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = zoom * zoomFactor;
+        zoom = Math.min(Math.max(newZoom, 0.05), 15);
+        const worldMouse = screenToWorld(mouseX, mouseY);
+        const screenMouseAfter = worldToScreen(worldMouse.x, worldMouse.y);
+        const dx = mouseX - screenMouseAfter.x;
+        const dy = mouseY - screenMouseAfter.y;
+        camX -= dx / zoom;
+        camY -= dy / zoom;
+      }
+    });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // 暂停按钮
+    pauseBtn.addEventListener('click', () => {
+      isPaused = !isPaused;
+      pauseBtn.textContent = isPaused ? '▶️ 播放' : '⏸️ 暂停';
+    });
+    // 显示控制按钮
+    document.querySelectorAll('.toggleBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.type;
+        displayOptions[type] = !displayOptions[type];
+        btn.classList.toggle('active', displayOptions[type]);
+      });
+    });
+    let hoveredObject = null;
+    let time = 0;
+    const timeScale = 0.5;
+    function checkHover(px, py, radius, obj) {
+      const screen = worldToScreen(px, py);
+      const dx = mouseX - screen.x;
+      const dy = mouseY - screen.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius * 2) {
+        hoveredObject = obj;
+      }
+    }
+    function drawOrbit(visualRadius, color = 'rgba(255, 255, 255, 0.08)', dash = []) {
+      const screenCenter = worldToScreen(0, 0);
+      ctx.beginPath();
+      ctx.arc(screenCenter.x, screenCenter.y, visualRadius * zoom, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.setLineDash(dash);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    function drawAUAxis() {
+      const ticks = [0.1, 0.4, 1, 5, 10, 30, 100, 1000, 10000, 63000];
+      const screenCenter = worldToScreen(0, 0);
+      labelSystem.reset();
+      ticks.forEach(au => {
+        const r = auToVisual(au);
+        const screenR = r * zoom;
+        if (screenR < 10 || screenR > 10000) return;
+        ctx.beginPath();
+        const x1 = screenCenter.x + screenR;
+        const y1 = screenCenter.y;
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x1 + 8, y1);
+        ctx.strokeStyle = 'rgba(200, 220, 255, 0.5)';
+        ctx.stroke();
+        // 动态调整字体大小
+        const fontSize = Math.max(10, Math.min(14, 180 / screenR));
+        labelSystem.addLabel(
+          x1 + 12, 
+          y1 - 4, 
+          `${au} AU`, 
+          'interstellar',
+          'au_value'
+        );
+      });
+    }
+    // 行星标签
+    function drawBodyLabel(name, x, y, radius, verticalAdjust = 0, color = '#FFFFFF', group = 'planets') {
+      const labelX = x + radius * 2.5 + 5;
+      const labelY = y;
+      labelSystem.addLabel(
+        labelX, 
+        labelY, 
+        name, 
+        group, 
+        'body_name',
+        verticalAdjust,
+        color
+      );
+    }
+    // 星际区域标签
+    function drawInterstellarRegionLabels() {
+      // 绘制所有星际区域的完整虚线圈
+      interstellarRegions.forEach((region, index) => {
+        const r = auToVisual(region.distanceAU);
+        const screenR = r * zoom;
+        const screenCenter = worldToScreen(0, 0);
+        // 特殊处理小行星带和柯伊伯带，使用填充效果
+        if (region.name === "小行星带") {
+          ctx.beginPath();
+          ctx.arc(screenCenter.x, screenCenter.y, screenR * 0.8, 0, Math.PI * 2);
+          ctx.arc(screenCenter.x, screenCenter.y, screenR * 1.2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(184, 134, 11, 0.05)';
+          ctx.fill();
+        } else if (region.name === "柯伊伯带") {
+          ctx.beginPath();
+          ctx.arc(screenCenter.x, screenCenter.y, screenR * 0.8, 0, Math.PI * 2);
+          ctx.arc(screenCenter.x, screenCenter.y, screenR * 1.2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(70, 130, 180, 0.05)';
+          ctx.fill();
+        }
+        // 绘制边界
+        ctx.beginPath();
+        ctx.arc(screenCenter.x, screenCenter.y, screenR, 0, Math.PI * 2);
+        ctx.strokeStyle = region.color;
+        ctx.setLineDash([(region.name === "日球层顶") ? 3 : 5, (region.name === "日球层顶") ? 5 : 10]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // 智能错位：为奥尔特云外缘设置特殊位置
+        let verticalAdjust = 0;
+        if (region.name === "奥尔特云外缘") {
+          verticalAdjust = 2.5; // 调整到更靠上位置
+        } else if (region.name === "奥尔特云内缘") {
+          verticalAdjust = 1.5;
+        } else if (region.name === "柯伊伯带") {
+          verticalAdjust = -1.5;
+        } else if (region.name === "小行星带") {
+          verticalAdjust = -0.5;
+        } else {
+          verticalAdjust = (index % 2 === 0) ? 0.5 : -0.5;
+        }
+        labelSystem.addLabel(
+          screenCenter.x + screenR,
+          screenCenter.y + verticalAdjust * 25, 
+          region.name,
+          'interstellar',
+          'region_name',
+          0,
+          region.color
+        );
+      });
+      for (let i = 0; i < labelSystem.maxIterations; i++) {
+        labelSystem.update();
+      }
+    }
+    function animate() {
+      // 清除画布
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // 绘制星空
+      drawStars();
+      hoveredObject = null;
+      // 获取太阳位置
+      const sunScreen = worldToScreen(0, 0);
+      // 绘制奥尔特云
+      const oortScreenR = oortVisualR * zoom;
+      ctx.beginPath();
+      ctx.arc(sunScreen.x, sunScreen.y, oortScreenR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(180, 150, 255, 0.1)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 15]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 绘制AU标尺
+      drawAUAxis();
+      // 绘制星际区域标签
+      drawInterstellarRegionLabels();
+      // 绘制柯伊伯带小天体
+      ctx.fillStyle = 'rgba(180, 200, 255, 0.3)';
+      kuiperBeltObjects.forEach(obj => {
+        const s = worldToScreen(obj.x, obj.y);
+        if (s.x > -50 && s.x < canvas.width + 50 && s.y > -50 && s.y < canvas.height + 50) {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+      // 绘制天体轨道
+      // 1. 八大行星和冥王星
+      celestialBodies.forEach((body, i) => {
+        if (body.distanceAU > 0) {
+          drawOrbit(auToVisual(body.distanceAU));
+        }
+      });
+      // 2. 柯伊伯带矮行星
+      if (displayOptions.dwarfPlanets) {
+        dwarfPlanets.forEach(planet => {
+          drawOrbit(auToVisual(planet.distanceAU), 'rgba(255, 255, 255, 0.05)', [5, 5]);
+        });
+      }
+      // 3. 小行星带
+      if (displayOptions.asteroidBelt) {
+        asteroidBelt.forEach(asteroid => {
+          drawOrbit(auToVisual(asteroid.distanceAU), 'rgba(210, 180, 140, 0.1)', [3, 3]);
+        });
+      }
+      // 4. 彗星 - 已移除轨道绘制
+      // 5. 太空探测器
+      if (displayOptions.probes) {
+        spaceProbes.forEach(probe => {
+          // 添加极其缓慢的移动
+          const slowFactor = 0.0001; // 每帧移动极小角度
+          const angle = probe.angle + (time * slowFactor);
+          const visualR = auToVisual(probe.distanceAU);
+          const wx = Math.cos(angle) * visualR;
+          const wy = Math.sin(angle) * visualR;
+          const s = worldToScreen(wx, wy);
+          const r = probe.radius * zoom;
+          // 绘制探测器
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = probe.color;
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.lineWidth = 1;
+          ctx.fill();
+          ctx.stroke();
+          checkHover(wx, wy, r * 2, probe);
+          // 添加标签
+          drawBodyLabel(probe.name, s.x, s.y, r, 0, probe.color, 'probes');
+        });
+      }
+      // 6. 远方天体
+      /*
+      if (displayOptions.distantObjects) {
+        distantObjects.forEach(obj => {
+          drawOrbit(auToVisual(obj.avgDistanceAU), obj.color, [2, 10]);
+        });
+      }
+      */
+      // 绘制太阳
+      ctx.beginPath();
+      ctx.arc(sunScreen.x, sunScreen.y, celestialBodies[0].radius * zoom, 0, Math.PI * 2);
+      ctx.fillStyle = celestialBodies[0].color;
+      ctx.shadowColor = celestialBodies[0].color;
+      ctx.shadowBlur = 20 * zoom;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+       ctx.shadowBlur = 0;
+      checkHover(0, 0, celestialBodies[0].radius, celestialBodies[0]);
+      // 绘制行星
+      for (let i = 1; i < celestialBodies.length; i++) {
+        const body = celestialBodies[i];
+        // 跳过不应显示的天体
+        if (body.group && !displayOptions[body.group]) continue;
+        const angle = (time / body.orbitDays) * Math.PI * 2;
+        const visualR = auToVisual(body.distanceAU);
+        const wx = Math.cos(angle) * visualR;
+        const wy = Math.sin(angle) * visualR;
+        const s = worldToScreen(wx, wy);
+        const r = body.radius * zoom;
+        // 特殊效果：土星环
+        if (body.hasRings) {
+          ctx.beginPath();
+          ctx.ellipse(s.x, s.y, r * 2.2, r * 0.5, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(227, 224, 192, 0.8)';
+          ctx.lineWidth = r * 0.2;
+          ctx.stroke();
+        }
+        // 绘制行星
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = body.color;
+        ctx.fill();
+        // 地球 + 月球
+        if (body.hasMoon) {
+          const moonAngle = (time / moon.orbitPeriodDays) * Math.PI * 2;
+          const moonVisualR = auToVisual(moon.orbitRadiusAU) * moon.visualScale;
+          const moonWX = wx + Math.cos(moonAngle) * moonVisualR;
+          const moonWY = wy + Math.sin(moonAngle) * moonVisualR;
+          const moonS = worldToScreen(moonWX, moonWY);
+          const moonR = moon.radius * zoom;
+          // 绘制轨道
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, moonVisualR * zoom, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(200, 200, 200, 0.2)';
+          ctx.stroke();
+          // 绘制月球
+          ctx.beginPath();
+          ctx.arc(moonS.x, moonS.y, moonR, 0, Math.PI * 2);
+          ctx.fillStyle = moon.color;
+          ctx.fill();
+          // 月球标签
+          drawBodyLabel("月球", moonS.x, moonS.y, moonR, 0.5, '#CCCCCC', 'moons');
+          // 悬停检测
+          checkHover(moonWX, moonWY, moonR, {
+            name: "月球",
+            info: "地球的天然卫星",
+            distanceAU: moon.orbitRadiusAU,
+            distanceKm: (moon.orbitRadiusAU * 1.5e8).toFixed(0)
+          });
+        }
+        checkHover(wx, wy, r, body);
+        // 添加标签
+        drawBodyLabel(body.name, s.x, s.y, r, 0, body.color);
+      }
+      // 绘制柯伊伯带矮行星
+      if (displayOptions.dwarfPlanets) {
+        dwarfPlanets.forEach(planet => {
+          const angle = (time / planet.orbitDays) * Math.PI * 2;
+          const visualR = auToVisual(planet.distanceAU);
+          const wx = Math.cos(angle) * visualR;
+          const wy = Math.sin(angle) * visualR;
+          const s = worldToScreen(wx, wy);
+          const r = planet.radius * zoom;
+          // 绘制矮行星
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = planet.color;
+          ctx.fill();
+          checkHover(wx, wy, r, planet);
+          // 添加标签
+          drawBodyLabel(planet.name, s.x, s.y, r, 0, planet.color, 'dwarfPlanets');
+        });
+      }
+      // 绘制小行星带天体
+      if (displayOptions.asteroidBelt) {
+        asteroidBelt.forEach(asteroid => {
+          const angle = (time / asteroid.orbitDays) * Math.PI * 2;
+          const visualR = auToVisual(asteroid.distanceAU);
+          const wx = Math.cos(angle) * visualR;
+          const wy = Math.sin(angle) * visualR;
+          const s = worldToScreen(wx, wy);
+          const r = asteroid.radius * zoom;
+          // 绘制小行星
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = asteroid.color;
+          ctx.fill();
+          checkHover(wx, wy, r, asteroid);
+          // 添加标签
+          drawBodyLabel(asteroid.name, s.x, s.y, r, 0, asteroid.color, 'asteroidBelt');
+        });
+      }
+      // 绘制彗星 - 无轨道，无彗尾
+      if (displayOptions.comets) {
+        comets.forEach(comet => {
+          const angle = (time / comet.orbitDays) * Math.PI * 2;
+          const visualR = auToVisual(comet.avgDistanceAU);
+          const wx = Math.cos(angle) * visualR;
+          const wy = Math.sin(angle) * visualR;
+          const s = worldToScreen(wx, wy);
+          const r = comet.radius * zoom;
+          // 仅绘制彗星头部
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = comet.color;
+          ctx.fill();
+          checkHover(wx, wy, r * 2, comet);
+          // 添加标签
+          drawBodyLabel(comet.name, s.x, s.y, r, 0, comet.color, 'comets');
+        });
+      }
+      // 绘制远方天体
+      if (displayOptions.distantObjects) {
+        distantObjects.forEach(obj => {
+          const angle = (time / obj.orbitDays * 0.01) * Math.PI * 2; // 极慢的移动
+          const visualR = auToVisual(obj.avgDistanceAU);
+          const wx = Math.cos(angle) * visualR;
+          const wy = Math.sin(angle) * visualR;
+          const s = worldToScreen(wx, wy);
+          const r = obj.radius * zoom;
+          // 绘制天体
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = obj.color;
+          ctx.fill();
+          checkHover(wx, wy, r * 2, obj);
+          // 添加标签
+          drawBodyLabel(obj.name, s.x, s.y, r, 0, obj.color, 'distantObjects');
+        });
+      }
+      // 更新和绘制标签
+      for (let i = 0; i < labelSystem.maxIterations; i++) {
+        labelSystem.update();
+      }
+      labelSystem.draw();
+      // 信息面板
+      if (hoveredObject) {
+        infoPanel.style.display = 'block';
+        let html = `<h3>${hoveredObject.name}`;
+        if (hoveredObject.type === 'dwarf') html += '（矮行星）';
+        else if (hoveredObject.type === 'star') html += '（恒星）';
+        else if (hoveredObject.type === 'asteroid') html += '（小行星）';
+        else if (hoveredObject.type === 'comet') html += '（彗星）';
+        else if (hoveredObject.type === 'probe') html += '（太空探测器）';
+        else if (hoveredObject.type === 'distant') html += '（远方天体）';
+        html += `</h3>`;
+        if (hoveredObject.distanceAU > 0) {
+          html += `<p>☀️ 距太阳：${hoveredObject.distanceAU.toFixed(1)} AU<br>（${(hoveredObject.distanceAU * 1.5e8).toLocaleString()} 公里）</p>`;
+        } else if (hoveredObject.perihelionAU && hoveredObject.aphelionAU) {
+          html += `<p>☄️ 轨道：近日点 ${hoveredObject.perihelionAU} AU, 远日点 ${hoveredObject.aphelionAU} AU</p>`;
+        }
+        if (hoveredObject.diameterKm) {
+          html += `<p>📏 直径：${hoveredObject.diameterKm.toLocaleString()} 公里</p>`;
+        }
+        if (hoveredObject.orbitDays > 0 && hoveredObject.orbitDays < 100000) {
+          html += `<p>⏳ 公转周期：${Math.round(hoveredObject.orbitDays)} 地球日</p>`;
+        } else if (hoveredObject.orbitDays > 0) {
+          html += `<p>⏳ 公转周期：${(hoveredObject.orbitDays/365.25).toFixed(1)} 地球年</p>`;
+        }
+        if (hoveredObject.rotationHours !== undefined) {
+          const hrs = Math.abs(hoveredObject.rotationHours);
+          const days = (hrs / 24).toFixed(2);
+          const dir = hoveredObject.rotationHours < 0 ? '（逆行）' : '';
+          html += `<p>🔄 自转周期：${days} 地球日${dir}</p>`;
+        }
+        if (hoveredObject.status) {
+          html += `<p>📡 状态：${hoveredObject.status}</p>`;
+        }
+        if (hoveredObject.info) {
+          html += `<p>ℹ️ ${hoveredObject.info}</p>`;
+        }
+        infoPanel.innerHTML = html;
+      } else {
+        infoPanel.style.display = 'none';
+      }
+      // 光标
+      if (spacePressed) {
+        canvas.style.cursor = isDragging ? 'grabbing' : 'grab';
+      } else {
+        canvas.style.cursor = 'default';
+      }
+      if (!isPaused) {
+        time += timeScale;
+      }
+      requestAnimationFrame(animate);
+    }
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      initStars();
+    });
+    initStars();
+    animate();
+  </script>
+</body>
+</html>
